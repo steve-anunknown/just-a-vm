@@ -1,8 +1,9 @@
 #include "stack.h"
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 
-int stackPush(stack_t *s, int i)
+int32_t stackPush(stack_t *s, intptr_t i)
 {
     if (s->top >= STACK_SIZE)
     {
@@ -12,7 +13,7 @@ int stackPush(stack_t *s, int i)
     s->data[s->top] = i;
     return ++(s->top);
 }
-int stackDupPush(stack_t *s, int i)
+int32_t stackDupPush(stack_t *s, int32_t i)
 {
     if (s->top >= STACK_SIZE)
     {
@@ -28,7 +29,7 @@ int stackDupPush(stack_t *s, int i)
     s->data[s->top] = s->data[s->top-i-1];
     return ++(s->top);
 }
-int stackSwap(stack_t *s, int i)
+int32_t stackSwap(stack_t *s, int32_t i)
 {
     if (s->top >= STACK_SIZE)
     {
@@ -41,12 +42,12 @@ int stackSwap(stack_t *s, int i)
         exit(1);
     }
     // top - i - 1 because top points to a free location
-    int temp_top        = s->data[s->top-1];
+    intptr_t temp_top   = s->data[s->top-1];
     s->data[s->top-1]   = s->data[s->top-i-1];
     s->data[s->top-i-1] = temp_top;
     return s->top;
 }
-int stackPop(stack_t *s)
+intptr_t stackPop(stack_t *s)
 {
     if (s->top == 0)
     {
@@ -59,11 +60,11 @@ int stackPop(stack_t *s)
 void stackPrint(const stack_t *s)
 {
     int top_copy = s->top;
-    printf("\n==================STACK==================\n");
+    printf("\n=======================STACK=======================\n");
     while ((top_copy--) > 0)
     {
-        printf("||\taddress: %d -> content: %d\t||\n", top_copy, s->data[top_copy]);
+        printf("||\taddress: %d -> content: %ld\t||\n", top_copy, s->data[top_copy]);
     }
-    printf("===================END===================\n");
+    printf("========================END========================\n");
 }
 

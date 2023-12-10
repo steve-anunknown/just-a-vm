@@ -1,7 +1,9 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <time.h>
 #include "stack.h"
+#include "cons.h"
 
 #define MAX_PROGRAM 65536
 
@@ -77,18 +79,18 @@ char get1Byte(void *ptr)
     char result = *address;
     return result;
 }
-int get2Byte(void *ptr)
+int32_t get2Byte(void *ptr)
 {
     // signed
     char *address = ptr;
     unsigned char first_byte = *address;
     char secnd_byte = *(address + 1);
-    int result = 0;
+    int32_t result = 0;
     // memcpy(&result, address, 2);
     result = (secnd_byte << 8) + first_byte;
     return result;
 }
-int get4Byte(void *ptr)
+int32_t get4Byte(void *ptr)
 {
     // signed
     char *address = ptr;
@@ -96,21 +98,20 @@ int get4Byte(void *ptr)
     unsigned char secnd_byte = *(address+1);
     unsigned char third_byte = *(address+2);
     char forth_byte = *(address+3);
-    int result = 0;
+    int32_t result = 0;
     result = (forth_byte << 24) + (third_byte << 16) + (secnd_byte << 8) + first_byte;
     return result;
 }
-int get2ByteAddress(void *ptr)
+int32_t get2ByteAddress(void *ptr)
 {
     char *address = ptr;
     char first_byte = *address;
     unsigned char secnd_byte = *(address + 1);
-    unsigned int result = 0;
+    uint32_t result = 0;
     // memcpy(&result, address, 2);
     result = (secnd_byte << 8) + first_byte;
     return result;
 }
-
 
 stack_t STACK_MACHINE;
 char byte_program[MAX_PROGRAM];
@@ -128,17 +129,27 @@ int main(int argc, char *argv[])
         perror("error opening file");
         exit(1);
     }
-    int byte_count = fread(byte_program, sizeof(char), MAX_PROGRAM, byte_file);
+    int32_t byte_count = fread(byte_program, sizeof(char), MAX_PROGRAM, byte_file);
+    if (byte_count == 0)
+    {
+        fprintf(stderr, "either fread failed or file is empty\n");
+        exit(1);
+    }
+
     char opcode;
     char *pc = &byte_program[0];
+
     char char_input = 0, char_output = 0;
-    int arg1 = 0,  arg2 = 0;
+    intptr_t arg1 = 0,  arg2 = 0;
+    cons *poppedCell = NULL;
+
     clock_t begin = clock();
     clock_t end = clock();
     double time_spent = 0.0;
     while(1)
     {
         opcode = pc[0];
+        stackPrint(&STACK_MACHINE);
         switch (opcode)
         {
             case JUMP:
@@ -159,19 +170,16 @@ int main(int argc, char *argv[])
             case DUP:
                 arg1 = (unsigned char) get1Byte(&pc[1]);
                 stackDupPush(&STACK_MACHINE, arg1);
-                //stackPrint(&STACK_MACHINE);
                 pc += SIZEOF_DUP;
                 break;
             case SWAP:
                 arg1 = (unsigned char) get1Byte(&pc[1]);
                 stackSwap(&STACK_MACHINE, arg1);
-                //stackPrint(&STACK_MACHINE);
                 pc += SIZEOF_SWAP;
                 break;
             case DROP:
                 // pop and ignore
                 stackPop(&STACK_MACHINE);
-                //stackPrint(&STACK_MACHINE);
                 pc += SIZEOF_DROP;
                 break;
             /* ==================IO OPERATORS===================== */
@@ -189,19 +197,16 @@ int main(int argc, char *argv[])
             case PUSH1:
                 arg1 = get1Byte(&pc[1]);
                 stackPush(&STACK_MACHINE, arg1);
-                //stackPrint(&STACK_MACHINE);
                 pc += SIZEOF_PUSH1;
                 break;
             case PUSH2:
                 arg1 = get2Byte(&pc[1]);
                 stackPush(&STACK_MACHINE, arg1);
-                //stackPrint(&STACK_MACHINE);
                 pc += SIZEOF_PUSH2;
                 break;
             case PUSH4:
                 arg1 = get4Byte(&pc[1]);
                 stackPush(&STACK_MACHINE, arg1);
-                //stackPrint(&STACK_MACHINE);
                 pc += SIZEOF_PUSH4;
                 break;
             /* ==================ARITHMETIC OPERATORS===================== */
@@ -292,22 +297,35 @@ int main(int argc, char *argv[])
                 break;
             /* ======================DYNAMIC MEMORY======================= */
             case CONS:
-                printf("Cons not implemented yet\n");
+                // assume that the push order is tail - head .
+                // push 0 3 cons -> cons {3, null}
+                // push 0 3 cons push 2 cons -> cons {3, cons {2, null}} 
+                // push 0 3 cons push 2 cons push 1 -> cons {3, cons {2, cons {1, null}}} 
+                arg2 = stackPop(&STACK_MACHINE); // head
+                arg1 = stackPop(&STACK_MACHINE); // tail
+                cons *newCell = malloc(sizeof(cons));
+                newCell->tail = (cons *) arg1;
+                newCell->head = arg2;
+                stackPush(&STACK_MACHINE, (intptr_t) newCell);
                 pc += SIZEOF_CONS;
                 break;
             case HD:
-                printf("Hd not implemented yet\n");
+                // hopefully a cons-cell address is popped
+                poppedCell = (cons *) stackPop(&STACK_MACHINE);
+                stackPush(&STACK_MACHINE, poppedCell->head);
                 pc += SIZEOF_HD;
                 break;
             case TL:
-                printf("Tl not implemented yet\n");
+                // hopefully a cons-cell address is popped
+                poppedCell = (cons *) stackPop(&STACK_MACHINE);
+                stackPush(&STACK_MACHINE, (intptr_t) poppedCell->tail);
                 pc += SIZEOF_TL;
                 break;
             /* ===========================FINISH========================== */
             case CLOCK:
                 end = clock();
                 time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-                printf("%0.6lf", time_spent);
+                printf("%0.6lf\n", time_spent);
                 pc += SIZEOF_CLOCK;
                 break;
             case HALT:
