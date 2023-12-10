@@ -10,7 +10,7 @@ int stackPush(stack_t *s, int i)
         exit(1);
     }
     s->data[s->top] = i;
-    return ++s->top;
+    return ++(s->top);
 }
 int stackDupPush(stack_t *s, int i)
 {
@@ -26,7 +26,7 @@ int stackDupPush(stack_t *s, int i)
     }
     // top - i - 1 because top points to a free location
     s->data[s->top] = s->data[s->top-i-1];
-    return ++s->top;
+    return ++(s->top);
 }
 int stackSwap(stack_t *s, int i)
 {
@@ -53,7 +53,8 @@ int stackPop(stack_t *s)
         fprintf(stderr, "stackPop: empty stack\n");
         exit(1);
     }
-    return s->data[--(s->top)];
+    s->top = s->top - 1;
+    return s->data[s->top];
 }
 void stackPrint(const stack_t *s)
 {

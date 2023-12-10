@@ -1,5 +1,4 @@
 #define STACK_SIZE 64
-#define REGS 2
 
 struct _stack
 {
