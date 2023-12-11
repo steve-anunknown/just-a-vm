@@ -11,7 +11,8 @@
 
 #define JUMP 0X01       // jump to address (2 bytes).
 #define SIZEOF_JUMP 3
-#define JNZ 0X02        // pop, and jump to address (2 bytes) if popped element not zero.
+#define JNZ 0X02        // pop, and jump to address (2 bytes) 
+                        // if popped element not zero.
 #define SIZEOF_JNZ 3
 #define DUP 0X03        // push i-th (1 unsigned byte) element to the top of the stack.
 #define SIZEOF_DUP 2
@@ -26,7 +27,8 @@
 #define SIZEOF_PUSH2 3
 #define PUSH1 0X08      // push 1byte (signed) value.
 #define SIZEOF_PUSH1 2
-/* ARITHMETIC OPERATORS */ // pops b, then pops a, does a 'op b and pushes result on top.
+/* ARITHMETIC OPERATORS */
+// pops b, then pops a, does a 'op b and pushes result on top.
 #define ADD 0X09
 #define SIZEOF_ADD 1
 #define SUB 0X0A
@@ -37,7 +39,8 @@
 #define SIZEOF_DIV 1
 #define MOD 0X0D
 #define SIZEOF_MOD 1
-/* COMPARISONS */       // pops b, then pops a, does a 'op b and pushes 1 if true, else 0.
+/* COMPARISONS */
+// pops b, then pops a, does a 'op b and pushes 1 if true, else 0.
 #define EQ 0X0E
 #define SIZEOF_EQ 1
 #define NE 0X0F
@@ -58,63 +61,94 @@
 #define OR 0X16
 #define SIZEOF_OR 1
 /* IO OPERATORS */
-#define INPUT 0X17      // read char from stdin, pushes ASCII value.
+#define INPUT 0X17      // read character from stdin, pushes ASCII value.
 #define SIZEOF_INPUT 1
-#define OUTPUT 0X18     // pops ASCII value from stack, prints char to stdout.
+#define OUTPUT 0X18     // pops ASCII value from stack, prints character to stdout.
 #define SIZEOF_OUTPUT 1
 #define CLOCK 0X2A
-#define SIZEOF_CLOCK 1
-/* TO BE IMPLEMENTED */
+#define SIZEOF_CLOCK 1  // prints the elapsed time since start of execution.
 #define CONS 0X30
-#define SIZEOF_CONS 1
-#define HD 0X31
+#define SIZEOF_CONS 1   // pops b, then pops a, allocates cons(a, b) on the heap
+                        // and pushes the address on the stack.
+#define HD 0X31         // pops a cons address and pushes its head.
 #define SIZEOF_HD 1
-#define TL 0X32
+#define TL 0X32         // pops a cons adderss and pushed its tail.
 #define SIZEOF_TL 1
 
-char get1Byte(void *ptr)
+#define GC_MASK (0x3FFFFFFF)
+#define GC_MASK_COMP (0xC0000000)
+#define INTEGER_SIG  (0x80000000)
+#define SHIFT_1_BYTE 8
+#define SHIFT_2_BYTE 16
+#define SHIFT_3_BYTE 24
+#define 1_BYTE 1
+#define 2_BYTE 2
+#define 3_BYTE 3
+
+
+/*
+ * All of the below getByte functions return
+ * something that will be pushed on the stack.
+ * Therefore, it has to be a uintptr_t thing.
+ */
+
+uintptr_t get1Byte(void *ptr)
 {
-    // signed
-    char *address = ptr;
-    char result = *address;
+    uint8_t *address = ptr;
+    /*
+     * this has to be sign extended
+     * up to the 2 msbs. These have
+     * to be 0 for gc purposes.
+     */
+    uintptr_t result = (intptr_t) (*address);
+    result = result & GC_MASK;
     return result;
 }
-int32_t get2Byte(void *ptr)
+uintptr_t get2Byte(void *ptr)
 {
-    // signed
-    char *address = ptr;
-    unsigned char first_byte = *address;
-    char secnd_byte = *(address + 1);
-    int32_t result = 0;
-    // memcpy(&result, address, 2);
-    result = (secnd_byte << 8) + first_byte;
+    uint8_t *address = ptr;
+    uint8_t first_byte = *address;
+    uint8_t secnd_byte = *(address + 1);
+    uintptr_t result = 0;
+    // sign extend it.
+    result = (intptr_t) ((secnd_byte << SHIFT_1_BYTE) + first_byte);
+    result = result & GC_MASK;
     return result;
 }
-int32_t get4Byte(void *ptr)
+uintptr_t get2ByteAddress(void *ptr)
 {
-    // signed
-    char *address = ptr;
-    unsigned char first_byte = *address;
-    unsigned char secnd_byte = *(address+1);
-    unsigned char third_byte = *(address+2);
-    char forth_byte = *(address+3);
-    int32_t result = 0;
-    result = (forth_byte << 24) + (third_byte << 16) + (secnd_byte << 8) + first_byte;
+    uint8_t *address = ptr;
+    uint8_t first_byte = *address;
+    uint8_t secnd_byte = *(address + 1);
+    uintptr_t result = 0;
+    result = ((secnd_byte << SHIFT_1_BYTE) + first_byte);
     return result;
 }
-int32_t get2ByteAddress(void *ptr)
+uintptr_t get4Byte(void *ptr)
 {
-    char *address = ptr;
-    char first_byte = *address;
-    unsigned char secnd_byte = *(address + 1);
-    uint32_t result = 0;
-    // memcpy(&result, address, 2);
-    result = (secnd_byte << 8) + first_byte;
+    uint8_t *address = ptr;
+    uint8_t first_byte = *address;
+    uint8_t secnd_byte = *(address+1);
+    uint8_t third_byte = *(address+2);
+    uint8_t forth_byte = *(address+3);
+    uintptr_t result = 0;
+    result = (intptr_t) ((forth_byte << SHIFT_3_BYTE) +
+                         (third_byte << SHIFT_2_BYTE) + 
+                         (secnd_byte << SHIFT_1_BYTE) +
+                         first_byte);
+    result = result & GC_MASK;
     return result;
+}
+
+int32_t intCheck(uintptr_t lhs, uintptr_t rhs)
+{
+    uintptr_t lbits = (lhs & GC_MASK_COMP) << 1;
+    uintptr_t rbits = (rhs & GC_MASK_COMP) << 1;
+    return (lbits == rbits && lbits == INTEGER_SIG)
 }
 
 stack_t STACK_MACHINE;
-char byte_program[MAX_PROGRAM];
+uint8_t byte_program[MAX_PROGRAM];
 
 int main(int argc, char *argv[])
 {
@@ -136,20 +170,20 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    char opcode;
-    char *pc = &byte_program[0];
+    uint8_t opcode;
+    uint8_t *pc = &byte_program[0];
 
-    char char_input = 0, char_output = 0;
-    intptr_t arg1 = 0,  arg2 = 0;
+    uint8_t char_input = 0, char_output = 0;
+    uintptr_t arg1 = 0,  arg2 = 0, result = 0;
     cons *poppedCell = NULL;
 
     clock_t begin = clock();
-    clock_t end = clock();
+    clock_t end   = clock();
     double time_spent = 0.0;
     while(1)
     {
         opcode = pc[0];
-        stackPrint(&STACK_MACHINE);
+        //stackPrint(&STACK_MACHINE);
         switch (opcode)
         {
             case JUMP:
@@ -158,7 +192,6 @@ int main(int argc, char *argv[])
                 break;
             case JNZ:
                 arg1 = stackPop(&STACK_MACHINE);
-                //stackPrint(&STACK_MACHINE);
                 if (arg1 != 0)
                 {
                     arg1 = get2ByteAddress(&pc[1]);
@@ -168,12 +201,12 @@ int main(int argc, char *argv[])
                     pc += SIZEOF_JNZ;
                 break;
             case DUP:
-                arg1 = (unsigned char) get1Byte(&pc[1]);
+                arg1 = get1Byte(&pc[1]);
                 stackDupPush(&STACK_MACHINE, arg1);
                 pc += SIZEOF_DUP;
                 break;
             case SWAP:
-                arg1 = (unsigned char) get1Byte(&pc[1]);
+                arg1 = get1Byte(&pc[1]);
                 stackSwap(&STACK_MACHINE, arg1);
                 pc += SIZEOF_SWAP;
                 break;
@@ -210,33 +243,43 @@ int main(int argc, char *argv[])
                 pc += SIZEOF_PUSH4;
                 break;
             /* ==================ARITHMETIC OPERATORS===================== */
+            /*
+             * operators are 30 or 62 bit.
+             * 2 bits have to be retained for
+             * garbace collection purposes.
+             */
             case ADD:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, arg1 + arg2);
+                result = (arg1 + arg2) & (GC_MASK);
+                stackPush(&STACK_MACHINE, result);
                 pc += SIZEOF_ADD;
                 break;
             case SUB:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, arg1 - arg2);
+                result = (arg1 - arg2) & (GC_MASK);
+                stackPush(&STACK_MACHINE, result);
                 pc += SIZEOF_SUB;
                 break;
             case MUL:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, arg1 * arg2);
+                result = (arg1 * arg2) & (GC_MASK);
+                stackPush(&STACK_MACHINE, result);
                 pc += SIZEOF_MUL;
                 break;
             case DIV:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, arg1 / arg2); // int division
+                result = (arg1 / arg2) & (GC_MASK);
+                stackPush(&STACK_MACHINE, result); 
                 pc += SIZEOF_DIV;
                 break;
             case MOD:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
+                result = (arg1 % arg2) & (GC_MASK);
                 stackPush(&STACK_MACHINE, arg1 % arg2);
                 pc += SIZEOF_MOD;
                 break;
@@ -256,24 +299,32 @@ int main(int argc, char *argv[])
             case LT:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
+                arg2 = arg2 << 2; // discard the 2 gc bits.
+                arg1 = arg1 << 2; // this pads zeros so it's ok.
                 stackPush(&STACK_MACHINE, (arg1 < arg2));
                 pc += SIZEOF_LT;
                 break;
             case GT:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
+                arg2 = arg2 << 2; // discard the 2 gc bits.
+                arg1 = arg1 << 2; // this pads zeros so it's ok.
                 stackPush(&STACK_MACHINE, (arg1 > arg2));
                 pc += SIZEOF_GT;
                 break;
             case LE:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
+                arg2 = arg2 << 2; // discard the 2 gc bits.
+                arg1 = arg1 << 2; // this pads zeros so it's ok.
                 stackPush(&STACK_MACHINE, (arg1 <= arg2));
                 pc += SIZEOF_LE;
                 break;
             case GE:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
+                arg2 = arg2 << 2; // discard the 2 gc bits.
+                arg1 = arg1 << 2; // this pads zeros so it's ok.
                 stackPush(&STACK_MACHINE, (arg1 >= arg2));
                 pc += SIZEOF_GE;
                 break;
@@ -297,12 +348,22 @@ int main(int argc, char *argv[])
                 break;
             /* ======================DYNAMIC MEMORY======================= */
             case CONS:
-                // assume that the push order is tail - head .
-                // push 0 3 cons -> cons {3, null}
-                // push 0 3 cons push 2 cons -> cons {3, cons {2, null}} 
-                // push 0 3 cons push 2 cons push 1 -> cons {3, cons {2, cons {1, null}}} 
+                /*
+                 * assume that the push order is tail - head .
+                 * (I don't even think there is a different valid order.)
+                 * push 0 3 cons -> cons {3, null}
+                 * push 0 3 cons push 2 cons -> cons {3, cons {2, null}} 
+                 * push 0 3 cons push 2 cons push 1 -> cons {3, cons {2, cons {1, null}}} 
+                 */
                 arg2 = stackPop(&STACK_MACHINE); // head
                 arg1 = stackPop(&STACK_MACHINE); // tail
+                /*
+                 * this is enough for simple dynamic memory allocation,
+                 * but not enough for a garbace collection implementation.
+                 * I think that I have to allocate some space at the
+                 * beginning, manage this space with a custom malloc,
+                 * and increase it if need be.
+                 */
                 cons *newCell = malloc(sizeof(cons));
                 newCell->tail = (cons *) arg1;
                 newCell->head = arg2;
