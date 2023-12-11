@@ -81,10 +81,6 @@
 #define SHIFT_1_BYTE 8
 #define SHIFT_2_BYTE 16
 #define SHIFT_3_BYTE 24
-#define 1_BYTE 1
-#define 2_BYTE 2
-#define 3_BYTE 3
-
 
 /*
  * All of the below getByte functions return
@@ -144,7 +140,7 @@ int32_t intCheck(uintptr_t lhs, uintptr_t rhs)
 {
     uintptr_t lbits = (lhs & GC_MASK_COMP) << 1;
     uintptr_t rbits = (rhs & GC_MASK_COMP) << 1;
-    return (lbits == rbits && lbits == INTEGER_SIG)
+    return (lbits == rbits && lbits == INTEGER_SIG);
 }
 
 stack_t STACK_MACHINE;
