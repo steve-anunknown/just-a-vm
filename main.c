@@ -75,9 +75,9 @@
 #define TL 0X32         // pops a cons adderss and pushed its tail.
 #define SIZEOF_TL 1
 
-#define GC_MASK (0x3FFFFFFF)
-#define GC_MASK_COMP (0xC0000000)
-#define INTEGER_SIG  (0x80000000)
+#define GC_MASK      (0x3FFFFFFFFFFFFFF)
+#define GC_MASK_COMP (0xC00000000000000)
+#define INTEGER_SIG  (0x800000000000000)
 #define SHIFT_1_BYTE 8
 #define SHIFT_2_BYTE 16
 #define SHIFT_3_BYTE 24
@@ -91,13 +91,11 @@
 uintptr_t get1Byte(void *ptr)
 {
     uint8_t *address = ptr;
-    /*
-     * this has to be sign extended
-     * up to the 2 msbs. These have
-     * to be 0 for gc purposes.
-     */
-    uintptr_t result = (intptr_t) (*address);
-    result = result & GC_MASK;
+    uintptr_t result = 0;
+    result = (*address) & (0x00000000000000FF);
+    if ((*address) & 0x80)
+        // sign extend it.
+        result = result | (0x3FFFFFFFFFFFFF00); 
     return result;
 }
 uintptr_t get2Byte(void *ptr)
@@ -106,9 +104,10 @@ uintptr_t get2Byte(void *ptr)
     uint8_t first_byte = *address;
     uint8_t secnd_byte = *(address + 1);
     uintptr_t result = 0;
-    // sign extend it.
-    result = (intptr_t) ((secnd_byte << SHIFT_1_BYTE) + first_byte);
-    result = result & GC_MASK;
+    result = ((secnd_byte << SHIFT_1_BYTE) + first_byte);
+    if (secnd_byte & 0x80)
+        // sign extend it.
+        result = result | (0x3FFFFFFFFFFF0000);
     return result;
 }
 uintptr_t get2ByteAddress(void *ptr)
@@ -128,16 +127,20 @@ uintptr_t get4Byte(void *ptr)
     uint8_t third_byte = *(address+2);
     uint8_t forth_byte = *(address+3);
     uintptr_t result = 0;
-    result = (intptr_t) ((forth_byte << SHIFT_3_BYTE) +
-                         (third_byte << SHIFT_2_BYTE) + 
-                         (secnd_byte << SHIFT_1_BYTE) +
-                         first_byte);
+    result = ((forth_byte << SHIFT_3_BYTE) +
+              (third_byte << SHIFT_2_BYTE) + 
+              (secnd_byte << SHIFT_1_BYTE) +
+              first_byte);
+    if (forth_byte & 0x80)
+        // sign extend it.
+        result = result | (0x3FFFFFFF00000000);
     result = result & GC_MASK;
     return result;
 }
 
 int32_t intCheck(uintptr_t lhs, uintptr_t rhs)
 {
+    // unused for now.
     uintptr_t lbits = (lhs & GC_MASK_COMP) << 1;
     uintptr_t rbits = (rhs & GC_MASK_COMP) << 1;
     return (lbits == rbits && lbits == INTEGER_SIG);
@@ -179,7 +182,6 @@ int main(int argc, char *argv[])
     while(1)
     {
         opcode = pc[0];
-        //stackPrint(&STACK_MACHINE);
         switch (opcode)
         {
             case JUMP:
@@ -241,8 +243,9 @@ int main(int argc, char *argv[])
             /* ==================ARITHMETIC OPERATORS===================== */
             /*
              * operators are 30 or 62 bit.
+             * (depending on the machine.)
              * 2 bits have to be retained for
-             * garbace collection purposes.
+             * garbage collection purposes.
              */
             case ADD:
                 arg2 = stackPop(&STACK_MACHINE);
@@ -386,6 +389,7 @@ int main(int argc, char *argv[])
                 pc += SIZEOF_CLOCK;
                 break;
             case HALT:
+                printf("Halting.\n");
                 return 0;
                 break;
             default:
