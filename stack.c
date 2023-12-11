@@ -63,6 +63,7 @@ void stackPrint(const stack_t *s)
     printf("\n=======================STACK=======================\n");
     while ((top_copy--) > 0)
     {
+        // this prints the contents in hex form.
         printf("||\taddress: %d -> content: %lx\t||\n", top_copy, s->data[top_copy]);
     }
     printf("========================END========================\n");
