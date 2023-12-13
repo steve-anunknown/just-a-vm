@@ -128,9 +128,9 @@ uintptr_t get4Byte(void *ptr)
     uint8_t forth_byte = *(address+3);
     uintptr_t result = 0;
     result = ((forth_byte << SHIFT_3_BYTE) +
-              (third_byte << SHIFT_2_BYTE) + 
-              (secnd_byte << SHIFT_1_BYTE) +
-              first_byte);
+            (third_byte << SHIFT_2_BYTE) + 
+            (secnd_byte << SHIFT_1_BYTE) +
+            first_byte);
     if (forth_byte & 0x80)
         // sign extend it.
         result = result | (0x3FFFFFFF00000000);
@@ -172,13 +172,27 @@ int main(int argc, char *argv[])
     uint8_t opcode;
     uint8_t *pc = &byte_program[0];
 
-    uint8_t char_input = 0, char_output = 0;
-    uintptr_t arg1 = 0,  arg2 = 0, result = 0;
-    cons *poppedCell = NULL;
+    uint8_t   char_input  = 0, char_output = 0;
+    uintptr_t arg1        = 0, arg2        = 0, result = 0;
+    cons      *poppedCell = NULL;
 
-    clock_t begin = clock();
-    clock_t end   = clock();
+    clock_t begin     = clock();
+    clock_t end       = clock();
     double time_spent = 0.0;
+
+    uintptr_t heap_size = 1024;
+    /*
+     * there is a design choice to be made here:
+     * - Define the heap as a pointer to "cons"
+     *   and let c take care of the indexing.
+     * - Define the heap as a void pointer and
+     *   control the indexing yourself, allowing
+     *   for easier addition of new types later on.
+     */
+    cons *heap          = malloc(sizeof(cons)*heap_size);
+    uintptr_t heap_ind  = 0; // this is what indexes the heap. 
+    uintptr_t heap_adr  = 0; // this is what is in the stack.
+    uintptr_t heap_cnt  = 1; // this is how many times the heap has grown.
     while(1)
     {
         opcode = pc[0];
@@ -213,7 +227,7 @@ int main(int argc, char *argv[])
                 stackPop(&STACK_MACHINE);
                 pc += SIZEOF_DROP;
                 break;
-            /* ==================IO OPERATORS===================== */
+                /* ==================IO OPERATORS===================== */
             case INPUT:
                 char_input = getchar();
                 stackPush(&STACK_MACHINE, char_input);
@@ -224,7 +238,7 @@ int main(int argc, char *argv[])
                 putchar(char_output);
                 pc += SIZEOF_OUTPUT;
                 break;
-            /* ==================PUSH OPERATORS===================== */
+                /* ==================PUSH OPERATORS===================== */
             case PUSH1:
                 arg1 = get1Byte(&pc[1]);
                 stackPush(&STACK_MACHINE, arg1);
@@ -240,13 +254,13 @@ int main(int argc, char *argv[])
                 stackPush(&STACK_MACHINE, arg1);
                 pc += SIZEOF_PUSH4;
                 break;
-            /* ==================ARITHMETIC OPERATORS===================== */
-            /*
-             * operators are 30 or 62 bit.
-             * (depending on the machine.)
-             * 2 bits have to be retained for
-             * garbage collection purposes.
-             */
+                /* ==================ARITHMETIC OPERATORS===================== */
+                /*
+                 * operators are 30 or 62 bit.
+                 * (depending on the machine.)
+                 * 2 bits have to be retained for
+                 * garbage collection purposes.
+                 */
             case ADD:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
@@ -282,7 +296,7 @@ int main(int argc, char *argv[])
                 stackPush(&STACK_MACHINE, arg1 % arg2);
                 pc += SIZEOF_MOD;
                 break;
-            /* =========================COMPARISONS======================= */
+                /* =========================COMPARISONS======================= */
             case EQ:
                 arg2 = stackPop(&STACK_MACHINE);
                 arg1 = stackPop(&STACK_MACHINE);
@@ -327,7 +341,7 @@ int main(int argc, char *argv[])
                 stackPush(&STACK_MACHINE, (arg1 >= arg2));
                 pc += SIZEOF_GE;
                 break;
-            /* ======================LOGICAL OPERATORS==================== */
+                /* ======================LOGICAL OPERATORS==================== */
             case NOT:
                 arg1 = stackPop(&STACK_MACHINE);
                 stackPush(&STACK_MACHINE, (arg1 != 0));
@@ -345,7 +359,7 @@ int main(int argc, char *argv[])
                 stackPush(&STACK_MACHINE, (arg1 != 0 || arg2 != 0));
                 pc += SIZEOF_AND;
                 break;
-            /* ======================DYNAMIC MEMORY======================= */
+                /* ======================DYNAMIC MEMORY======================= */
             case CONS:
                 /*
                  * assume that the push order is tail - head .
@@ -354,34 +368,42 @@ int main(int argc, char *argv[])
                  * push 0 3 cons push 2 cons -> cons {3, cons {2, null}} 
                  * push 0 3 cons push 2 cons push 1 -> cons {3, cons {2, cons {1, null}}} 
                  */
-                arg2 = stackPop(&STACK_MACHINE); // head
-                arg1 = stackPop(&STACK_MACHINE); // tail
-                /*
-                 * this is enough for simple dynamic memory allocation,
-                 * but not enough for a garbace collection implementation.
-                 * I think that I have to allocate some space at the
-                 * beginning, manage this space with a custom malloc,
-                 * and increase it if need be.
-                 */
-                cons *newCell = malloc(sizeof(cons));
-                newCell->tail = (cons *) arg1;
-                newCell->head = arg2;
-                stackPush(&STACK_MACHINE, (intptr_t) newCell);
+                // TODO: make sure this condition is correct.
+                if (heap_size*heap_cnt - heap_ind - 1 <= sizeof(cons))
+                {
+                    // TODO: decide what the garbage collector will do.
+                    // try to shrink the space first and then allocate?
+                    // how will the shrinking work?
+                    heap_cnt++;
+                    heap = realloc(heap, sizeof(cons)*heap_size*heap_cnt);
+                    // TODO: some check?
+                }
+                // head
+                arg2 = stackPop(&STACK_MACHINE);
+                // tail
+                arg1 = stackPop(&STACK_MACHINE);
+                // the index is the previous cons cell + 1
+                // TODO: check whether the addition causes problems to the msb.
+                heap_ind = (arg1 & GC_MASK) + 1;
+                // set the first bit to 1 to imply that it is an address.
+                // TODO: think about whether the second bit should also be set.
+                heap_adr = (heap_ind | (0x8000000000000000));
+                heap[heap_ind].tail = arg1; 
+                heap[heap_ind].head = arg2;
+                stackPush(&STACK_MACHINE, heap_adr);
                 pc += SIZEOF_CONS;
                 break;
             case HD:
-                // hopefully a cons-cell address is popped
-                poppedCell = (cons *) stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, poppedCell->head);
+                uintptr_t index = stackPop(&STACK_MACHINE);
+                stackPush(&STACK_MACHINE, heap[index].head);
                 pc += SIZEOF_HD;
                 break;
             case TL:
-                // hopefully a cons-cell address is popped
-                poppedCell = (cons *) stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (intptr_t) poppedCell->tail);
+                uintptr_t index = stackPop(&STACK_MACHINE);
+                stackPush(&STACK_MACHINE, heap[index].tail);
                 pc += SIZEOF_TL;
                 break;
-            /* ===========================FINISH========================== */
+                /* ===========================FINISH========================== */
             case CLOCK:
                 end = clock();
                 time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
