@@ -1,7 +1,12 @@
+#ifndef CONS_H
+#define CONS_H
+
 struct _cons_cell
 {
-    intptr_t head;
-    uintptr_t  tail;
+    uintptr_t head;
+    struct _cons_cell* tail;
 };
 typedef struct _cons_cell cons;
+
+#endif
 

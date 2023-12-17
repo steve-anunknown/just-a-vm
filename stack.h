@@ -1,7 +1,9 @@
-#define STACK_SIZE 256
 #include <stdint.h>
+#ifndef STACK_H
+#define STACK_H
+#define STACK_SIZE 256
 
-struct _stack
+struct stack
 {
     /* 
      * The stack has ... a stack of data.
@@ -17,15 +19,15 @@ struct _stack
      */
     uintptr_t data[STACK_SIZE];
     /*
-     * Of course, a pointer to the top of the stack
-     * the pointer's is to be used as an index.
+     * Of course, a pointer to the (free) top of the stack
+     * the pointerW is to be used as an index.
      * I think it does not make much of a difference
      * whether uint32_t or int32_t is used, since both
      * of them wrap around eventually.
      */
     int32_t top;
 };
-typedef struct _stack stack_t;
+typedef struct stack stack_t;
 
 // write the contents of i to the top of the stack
 int32_t stackPush(stack_t *s, uintptr_t i);
@@ -38,3 +40,4 @@ uintptr_t stackPop(stack_t *s);
 // prints the stack contents for inspection
 void stackPrint(const stack_t *s);
 
+#endif

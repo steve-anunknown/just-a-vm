@@ -42,7 +42,7 @@ int32_t stackSwap(stack_t *s, int32_t i)
         exit(1);
     }
     // top - i - 1 because top points to a free location
-    uintptr_t temp_top   = s->data[s->top-1];
+    const uintptr_t temp_top   = s->data[s->top-1];
     s->data[s->top-1]   = s->data[s->top-i-1];
     s->data[s->top-i-1] = temp_top;
     return s->top;
