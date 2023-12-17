@@ -251,6 +251,7 @@ int main(int argc, char *argv[])
                         printf("freelist address is %p.\nMemory has been freed, all good.\n\n\n", (void*)GC.freelist);
                     else
                     {
+                        // TODO: try to allocate more space on the heap, if it runs out.
                         printf("Memory has been exhausted, trying to allocate more...\n");
                         exit(1);
                     }
