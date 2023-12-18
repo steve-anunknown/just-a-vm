@@ -23,8 +23,6 @@ bool markAndSweep(garbage_collector* gc)
         }
     }
     // mark: dfs for every root
-    // sanity check: count how many nodes were marked
-    unsigned int marked = 0;
     while (count-- != 0)
     {
         /*
@@ -42,7 +40,6 @@ bool markAndSweep(garbage_collector* gc)
             if (!IsMarked(gc->bitarray, roots[count] - gc->bottom))
             {
                 Mark(gc->bitarray, roots[count] - gc->bottom);
-                marked++;
                 /*
                  * there is a crucial point here. The cons address that is being
                  * used to access the 'head' and 'tail' fields is first found on
@@ -62,30 +59,22 @@ bool markAndSweep(garbage_collector* gc)
     }
     // sweep: go through the heap (the bitarray actually) and add unmarked
     // elements to the freelist
-    unsigned int freed = 0;
-    unsigned int reachable = 0;
     unsigned int index = 0;
+    /* 
+     * As a sanity check, one can count the marked elements and the reachable,
+     * they should be equal.
+     */
     while (index < gc->size)
     {
         if (IsMarked(gc->bitarray, index))
-        {
-            reachable++;
             Unmark(gc->bitarray, index);
-        }
         else
         {
-            freed++;
             cons* temp = (cons*)(gc->bottom + index);
             temp->head = (uintptr_t) gc->freelist;
             gc->freelist = temp;
         }
         index += sizeof(cons);
-    }
-    if (marked != reachable && reachable + freed != gc->size)
-    {
-        printf("marked: %d, reachable: %d\n", marked, reachable);
-        printf("ERROR: marked != reachable\n");
-        exit(1);
     }
     free(roots);
     return gc->freelist;
