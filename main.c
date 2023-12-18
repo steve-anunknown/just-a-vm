@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
     double time_spent = 0.0;
 
     // every item on the heap is a cons cell
-    const size_t    PAGE_SIZE        = 4096;
+    const size_t    PAGE_SIZE        = 10*4096;
     const uintptr_t MAX_HEAP_ADDRESS = 0x3FFFFFFFFFFFFFFF;
     uintptr_t       MIN_HEAP_ADDRESS = MAX_HEAP_ADDRESS - 4*PAGE_SIZE; 
     unsigned int    cons_counter = 0;
@@ -244,12 +244,10 @@ int main(int argc, char *argv[])
                      * This value can then be checked and perhaps more space on
                      * the heap can be allocated.
                      */
-                    printf("Garbage collector activated: cons counter = %d\n", cons_counter);
+                    //printf("Garbage collector activated: cons counter = %d\n", cons_counter);
                     cons_counter = 0;
-                    stackPrint(GC.machine);
-                    if (markAndSweep(&GC))
-                        printf("freelist address is %p.\nMemory has been freed, all good.\n\n\n", (void*)GC.freelist);
-                    else
+                    //stackPrint(GC.machine);
+                    if (!markAndSweep(&GC))
                     {
                         // TODO: try to allocate more space on the heap, if it runs out.
                         printf("Memory has been exhausted, trying to allocate more...\n");
