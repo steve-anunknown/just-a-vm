@@ -1,120 +1,23 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <time.h>
-#include "stack.h"
-#include "cons.h"
+#include <sys/mman.h>
+#include <err.h>
 
-#define MAX_PROGRAM 65536
+#include "instructions.h"   // this includes the opcodes, labels and sizes
+#include "utils.h"          // this includes the getByte functions
+#include "stack.h"          // this includes the stack functions and stack definition
+#include "cons.h"           // this includes the cons cell definition
+#include "gc.h"             // this includes the garbage collector functions and definition
+#include "bitarray.h"       // this includes the bitarray functions and definition
 
-#define HALT 0X00
-
-#define JUMP 0X01       // jump to address (2 bytes).
-#define SIZEOF_JUMP 3
-#define JNZ 0X02        // pop, and jump to address (2 bytes) if popped element not zero.
-#define SIZEOF_JNZ 3
-#define DUP 0X03        // push i-th (1 unsigned byte) element to the top of the stack.
-#define SIZEOF_DUP 2
-#define SWAP 0X04       // swap top of the stack and i-th (1 unsigned byte) element.
-#define SIZEOF_SWAP 2
-#define DROP 0X05       // pop and ignore.
-#define SIZEOF_DROP 1
-/* PUSH OPERATORS */
-#define PUSH4 0X06      // push 4byte (signed) value.
-#define SIZEOF_PUSH4 5
-#define PUSH2 0X07      // push 2byte (signed) value.
-#define SIZEOF_PUSH2 3
-#define PUSH1 0X08      // push 1byte (signed) value.
-#define SIZEOF_PUSH1 2
-/* ARITHMETIC OPERATORS */ // pops b, then pops a, does a 'op b and pushes result on top.
-#define ADD 0X09
-#define SIZEOF_ADD 1
-#define SUB 0X0A
-#define SIZEOF_SUB 1
-#define MUL 0X0B
-#define SIZEOF_MUL 1
-#define DIV 0X0C
-#define SIZEOF_DIV 1
-#define MOD 0X0D
-#define SIZEOF_MOD 1
-/* COMPARISONS */       // pops b, then pops a, does a 'op b and pushes 1 if true, else 0.
-#define EQ 0X0E
-#define SIZEOF_EQ 1
-#define NE 0X0F
-#define SIZEOF_NE 1
-#define LT 0X10
-#define SIZEOF_LT 1
-#define GT 0X11
-#define SIZEOF_GT 1
-#define LE 0X12
-#define SIZEOF_LE 1
-#define GE 0X13
-#define SIZEOF_GE 1
-/* LOGICAL OPERATORS */
-#define NOT 0X14
-#define SIZEOF_NOT 1
-#define AND 0X15
-#define SIZEOF_AND 1
-#define OR 0X16
-#define SIZEOF_OR 1
-/* IO OPERATORS */
-#define INPUT 0X17      // read char from stdin, pushes ASCII value.
-#define SIZEOF_INPUT 1
-#define OUTPUT 0X18     // pops ASCII value from stack, prints char to stdout.
-#define SIZEOF_OUTPUT 1
-#define CLOCK 0X2A
-#define SIZEOF_CLOCK 1
-/* TO BE IMPLEMENTED */
-#define CONS 0X30
-#define SIZEOF_CONS 1
-#define HD 0X31
-#define SIZEOF_HD 1
-#define TL 0X32
-#define SIZEOF_TL 1
-
-char get1Byte(void *ptr)
-{
-    // signed
-    char *address = ptr;
-    char result = *address;
-    return result;
-}
-int32_t get2Byte(void *ptr)
-{
-    // signed
-    char *address = ptr;
-    unsigned char first_byte = *address;
-    char secnd_byte = *(address + 1);
-    int32_t result = 0;
-    // memcpy(&result, address, 2);
-    result = (secnd_byte << 8) + first_byte;
-    return result;
-}
-int32_t get4Byte(void *ptr)
-{
-    // signed
-    char *address = ptr;
-    unsigned char first_byte = *address;
-    unsigned char secnd_byte = *(address+1);
-    unsigned char third_byte = *(address+2);
-    char forth_byte = *(address+3);
-    int32_t result = 0;
-    result = (forth_byte << 24) + (third_byte << 16) + (secnd_byte << 8) + first_byte;
-    return result;
-}
-int32_t get2ByteAddress(void *ptr)
-{
-    char *address = ptr;
-    char first_byte = *address;
-    unsigned char secnd_byte = *(address + 1);
-    uint32_t result = 0;
-    // memcpy(&result, address, 2);
-    result = (secnd_byte << 8) + first_byte;
-    return result;
-}
+#define MAX_PROGRAM      65536
+uint8_t byte_program[MAX_PROGRAM];
 
 stack_t STACK_MACHINE;
-char byte_program[MAX_PROGRAM];
+garbage_collector GC = {&STACK_MACHINE, NULL, 0, 0, 0, NULL, NULL};
 
 int main(int argc, char *argv[])
 {
@@ -129,36 +32,44 @@ int main(int argc, char *argv[])
         perror("error opening file");
         exit(1);
     }
-    int32_t byte_count = fread(byte_program, sizeof(char), MAX_PROGRAM, byte_file);
+    int32_t byte_count = fread(byte_program, sizeof(uint8_t), MAX_PROGRAM, byte_file);
     if (byte_count == 0)
     {
         fprintf(stderr, "either fread failed or file is empty\n");
         exit(1);
     }
 
-    char opcode;
-    char *pc = &byte_program[0];
+    uint8_t   opcode;
+    uint8_t   *pc = &byte_program[0];
+    uint8_t   char_input  = 0, char_output = 0;
+    uintptr_t arg1        = 0, arg2        = 0, result = 0;
+    cons      *poppedCell = NULL;
 
-    char char_input = 0, char_output = 0;
-    intptr_t arg1 = 0,  arg2 = 0;
-    cons *poppedCell = NULL;
-
-    clock_t begin = clock();
-    clock_t end = clock();
+    clock_t begin     = clock();
+    clock_t end       = clock();
     double time_spent = 0.0;
+
+    // every item on the heap is a cons cell
+    const size_t    PAGE_SIZE        = 10*4096;
+    const uintptr_t MAX_HEAP_ADDRESS = 0x3FFFFFFFFFFFFFFF;
+    uintptr_t       MIN_HEAP_ADDRESS = MAX_HEAP_ADDRESS - 4*PAGE_SIZE;
+    GC.heap     = mmap((void*)MIN_HEAP_ADDRESS, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    GC.size     = PAGE_SIZE;
+    GC.bitarray = calloc((PAGE_SIZE+1)/sizeof(uint32_t), sizeof(uint32_t));
+    GC.bottom   = (uintptr_t) GC.heap;
+
     while(1)
     {
+    next_instruction:
         opcode = pc[0];
-        stackPrint(&STACK_MACHINE);
         switch (opcode)
         {
             case JUMP:
                 arg1 = get2ByteAddress(&pc[1]);
                 pc = &byte_program[arg1];
-                break;
+                goto next_instruction;
             case JNZ:
-                arg1 = stackPop(&STACK_MACHINE);
-                //stackPrint(&STACK_MACHINE);
+                arg1 = stackPop(GC.machine);
                 if (arg1 != 0)
                 {
                     arg1 = get2ByteAddress(&pc[1]);
@@ -166,175 +77,222 @@ int main(int argc, char *argv[])
                 }
                 else
                     pc += SIZEOF_JNZ;
-                break;
+                goto next_instruction;
             case DUP:
-                arg1 = (unsigned char) get1Byte(&pc[1]);
-                stackDupPush(&STACK_MACHINE, arg1);
+                arg1 = get1Byte(&pc[1]);
+                stackDupPush(GC.machine, arg1);
                 pc += SIZEOF_DUP;
-                break;
+                goto next_instruction;
             case SWAP:
-                arg1 = (unsigned char) get1Byte(&pc[1]);
-                stackSwap(&STACK_MACHINE, arg1);
+                arg1 = get1Byte(&pc[1]);
                 pc += SIZEOF_SWAP;
-                break;
+                stackSwap(GC.machine, arg1);
+                goto next_instruction;
             case DROP:
                 // pop and ignore
-                stackPop(&STACK_MACHINE);
                 pc += SIZEOF_DROP;
-                break;
-            /* ==================IO OPERATORS===================== */
-            case INPUT:
-                char_input = getchar();
-                stackPush(&STACK_MACHINE, char_input);
-                pc += SIZEOF_INPUT;
-                break;
-            case OUTPUT:
-                char_output = stackPop(&STACK_MACHINE);
-                putchar(char_output);
-                pc += SIZEOF_OUTPUT;
-                break;
-            /* ==================PUSH OPERATORS===================== */
+                stackPop(GC.machine);
+                goto next_instruction;
+                /* ==================PUSH OPERATORS===================== */
             case PUSH1:
                 arg1 = get1Byte(&pc[1]);
-                stackPush(&STACK_MACHINE, arg1);
                 pc += SIZEOF_PUSH1;
-                break;
+                stackPush(GC.machine, arg1 & GC_MASK);
+                goto next_instruction;
             case PUSH2:
                 arg1 = get2Byte(&pc[1]);
-                stackPush(&STACK_MACHINE, arg1);
                 pc += SIZEOF_PUSH2;
-                break;
+                stackPush(GC.machine, arg1 & GC_MASK);
+                goto next_instruction;
             case PUSH4:
                 arg1 = get4Byte(&pc[1]);
-                stackPush(&STACK_MACHINE, arg1);
                 pc += SIZEOF_PUSH4;
-                break;
-            /* ==================ARITHMETIC OPERATORS===================== */
+                stackPush(GC.machine, arg1 & GC_MASK);
+                goto next_instruction;
+                /* ==================ARITHMETIC OPERATORS===================== */
+                /*
+                 * operators are 31 or 63 bit.
+                 * (depending on the machine.)
+                 * 1 bit has to be retained for
+                 * garbage collection purposes.
+                 */
             case ADD:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, arg1 + arg2);
+          
                 pc += SIZEOF_ADD;
-                break;
+                arg2   = stackPop(GC.machine);
+                arg1   = stackPop(GC.machine);
+                result = (arg1 + arg2) & GC_MASK;
+                stackPush(GC.machine, result);
+                goto next_instruction;
             case SUB:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, arg1 - arg2);
                 pc += SIZEOF_SUB;
-                break;
+                arg2   = stackPop(GC.machine);
+                arg1   = stackPop(GC.machine);
+                result = (arg1 - arg2) & GC_MASK;
+                stackPush(GC.machine, result);
+                goto next_instruction;
             case MUL:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, arg1 * arg2);
                 pc += SIZEOF_MUL;
-                break;
+                arg2   = stackPop(GC.machine);
+                arg1   = stackPop(GC.machine);
+                result = (arg1 * arg2) & GC_MASK;
+                stackPush(GC.machine, result);
+                goto next_instruction;
             case DIV:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, arg1 / arg2); // int division
                 pc += SIZEOF_DIV;
-                break;
+                arg2   = stackPop(GC.machine);
+                arg1   = stackPop(GC.machine);
+                result = (arg1 / arg2) & GC_MASK;
+                stackPush(GC.machine, result); 
+                goto next_instruction;
             case MOD:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, arg1 % arg2);
                 pc += SIZEOF_MOD;
-                break;
-            /* =========================COMPARISONS======================= */
+                arg2   = stackPop(GC.machine);
+                arg1   = stackPop(GC.machine);
+                result = (arg1 % arg2) & GC_MASK;
+                stackPush(GC.machine, result);
+                goto next_instruction;
+                /* =========================COMPARISONS======================= */
+                /*
+                 * the bytes that have been pushed on the stack are signed.
+                 * therefore, eventhough an unsigned type is used to represent
+                 * the data on the stack, the comparison operators must operate
+                 * on signed types. Therefore, the data are casted to signed
+                 * types before the comparison.
+                */
             case EQ:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (arg1 == arg2));
                 pc += SIZEOF_EQ;
-                break;
+                arg2 = stackPop(GC.machine);
+                arg1 = stackPop(GC.machine);
+                stackPush(GC.machine, (arg1 == arg2));
+                goto next_instruction;
             case NE:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (arg1 != arg2));
                 pc += SIZEOF_NE;
-                break;
+                arg2 = stackPop(GC.machine);
+                arg1 = stackPop(GC.machine);
+                stackPush(GC.machine, (arg1 != arg2));
+                goto next_instruction;
             case LT:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (arg1 < arg2));
                 pc += SIZEOF_LT;
-                break;
+                arg2 = stackPop(GC.machine);
+                arg1 = stackPop(GC.machine);
+                arg2 = arg2 << 1; // discard the 1 gc bit.
+                arg1 = arg1 << 1; // this pads zeros so it's ok.
+                stackPush(GC.machine, ((intptr_t)arg1 < (intptr_t)arg2));
+                goto next_instruction;
             case GT:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (arg1 > arg2));
                 pc += SIZEOF_GT;
-                break;
+                arg2 = stackPop(GC.machine);
+                arg1 = stackPop(GC.machine);
+                arg2 = arg2 << 1; // discard the 1 gc bit.
+                arg1 = arg1 << 1; // this pads zeros so it's ok.
+                stackPush(GC.machine, ((intptr_t)arg1 > (intptr_t)arg2));
+                goto next_instruction;
             case LE:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (arg1 <= arg2));
                 pc += SIZEOF_LE;
-                break;
+                arg2 = stackPop(GC.machine);
+                arg1 = stackPop(GC.machine);
+                arg2 = arg2 << 1; // discard the 1 gc bit.
+                arg1 = arg1 << 1; // this pads zeros so it's ok.
+                stackPush(GC.machine, ((intptr_t)arg1 <= (intptr_t)arg2));
+                goto next_instruction;
             case GE:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (arg1 >= arg2));
                 pc += SIZEOF_GE;
-                break;
-            /* ======================LOGICAL OPERATORS==================== */
+                arg2 = stackPop(GC.machine);
+                arg1 = stackPop(GC.machine);
+                arg2 = arg2 << 1; // discard the 1 gc bit.
+                arg1 = arg1 << 1; // this pads zeros so it's ok.
+                stackPush(GC.machine, ((intptr_t)arg1 >= (intptr_t)arg2));
+                goto next_instruction;
+                /* ======================LOGICAL OPERATORS==================== */
             case NOT:
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (arg1 != 0));
                 pc += SIZEOF_NOT;
-                break;
+                arg1 = stackPop((GC.machine));
+                stackPush(GC.machine, (arg1 != 0));
+                goto next_instruction;
             case AND:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (arg1 != 0 && arg2 != 0));
                 pc += SIZEOF_AND;
-                break;
+                arg2 = stackPop(GC.machine);
+                arg1 = stackPop(GC.machine);
+                stackPush(GC.machine, (arg1 != 0 && arg2 != 0));
+                goto next_instruction;
             case OR:
-                arg2 = stackPop(&STACK_MACHINE);
-                arg1 = stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (arg1 != 0 || arg2 != 0));
-                pc += SIZEOF_AND;
-                break;
-            /* ======================DYNAMIC MEMORY======================= */
+                pc += SIZEOF_OR;
+                arg2 = stackPop(GC.machine);
+                arg1 = stackPop(GC.machine);
+                stackPush(GC.machine, (arg1 != 0 || arg2 != 0));
+                goto next_instruction;
+                /* ==================IO OPERATORS===================== */
+            case INPUT:
+                pc += SIZEOF_INPUT;
+                char_input = getchar();
+                stackPush(GC.machine, char_input);
+                goto next_instruction;
+            case OUTPUT:
+                pc += SIZEOF_OUTPUT;
+                char_output = stackPop(GC.machine);
+                putchar(char_output);
+                goto next_instruction;
+                /* ======================DYNAMIC MEMORY======================= */
             case CONS:
-                // assume that the push order is tail - head .
-                // push 0 3 cons -> cons {3, null}
-                // push 0 3 cons push 2 cons -> cons {3, cons {2, null}} 
-                // push 0 3 cons push 2 cons push 1 -> cons {3, cons {2, cons {1, null}}} 
-                arg2 = stackPop(&STACK_MACHINE); // head
-                arg1 = stackPop(&STACK_MACHINE); // tail
-                cons *newCell = malloc(sizeof(cons));
-                newCell->tail = (cons *) arg1;
-                newCell->head = arg2;
-                stackPush(&STACK_MACHINE, (intptr_t) newCell);
                 pc += SIZEOF_CONS;
-                break;
+                if (!GC.freelist)
+                {
+                    /*
+                     * This returns true if GC.freelist turns out not empty.
+                     * This value can then be checked and perhaps more space on
+                     * the heap can be allocated.
+                     */
+                    if (!markAndSweep(&GC))
+                    {
+                        printf("Memory has been exhausted, trying to allocate more...\n");
+                        exit(1);
+                    }
+                }
+                poppedCell       = GC.freelist;            // this is a real address
+                GC.freelist      = (cons*) GC.freelist->head;
+
+                /*
+                 * This must NOT be masked. Check the mark and sweep function in
+                 * gc.c for more information.
+                 */
+                arg2             = stackPop(GC.machine); // tail
+                poppedCell->tail = (cons*) arg2; 
+
+                /*
+                 * This must also NOT be masked, irregardless of what it is, for
+                 * the same reason as above.
+                 */ 
+                arg1             = stackPop(GC.machine); // head
+                poppedCell->head = arg1;
+
+                stackPush(GC.machine, ((uintptr_t) poppedCell) | MARK_FAKE);
+                goto next_instruction;
             case HD:
-                // hopefully a cons-cell address is popped
-                poppedCell = (cons *) stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, poppedCell->head);
                 pc += SIZEOF_HD;
-                break;
+                poppedCell = (cons *) (stackPop(GC.machine) & GC_MASK);
+
+                stackPush(GC.machine, poppedCell->head);
+                goto next_instruction;
             case TL:
-                // hopefully a cons-cell address is popped
-                poppedCell = (cons *) stackPop(&STACK_MACHINE);
-                stackPush(&STACK_MACHINE, (intptr_t) poppedCell->tail);
                 pc += SIZEOF_TL;
-                break;
-            /* ===========================FINISH========================== */
+                poppedCell = (cons *) (stackPop(GC.machine) & GC_MASK);
+                stackPush(GC.machine, (uintptr_t) poppedCell->tail);
+                
+                goto next_instruction;
+                /* ===========================FINISH========================== */
             case CLOCK:
+                pc += SIZEOF_CLOCK;
                 end = clock();
                 time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
                 printf("%0.6lf\n", time_spent);
-                pc += SIZEOF_CLOCK;
-                break;
+                goto next_instruction;
             case HALT:
+                printf("Halting.\n");
                 return 0;
-                break;
             default:
                 printf("either end of stream or wrong opcode\n");
                 return 0;
-                break;
         }
     } 
 }
