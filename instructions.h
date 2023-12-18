@@ -1,3 +1,5 @@
+#ifndef INSTRUCTIONS_H
+#define INSTRUCTIONS_H
 #define HALT 0X00
 
 #define JUMP 0X01       // jump to address (2 bytes).
@@ -65,4 +67,6 @@
 #define SIZEOF_HD 1
 #define TL 0X32         // pops a cons adderss and pushed its tail.
 #define SIZEOF_TL 1
+
+#endif
 
