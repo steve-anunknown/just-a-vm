@@ -7,7 +7,7 @@ int32_t stackPush(stack_t *s, uintptr_t i)
 {
     if (s->top >= STACK_SIZE)
     {
-        fprintf(stderr, "stackPush: stack overflow\n");
+        fprintf(stderr, "stackPush: stack overflow.\n");
         exit(1);
     }
     s->data[s->top] = i;
@@ -17,12 +17,12 @@ int32_t stackDupPush(stack_t *s, int32_t i)
 {
     if (s->top >= STACK_SIZE)
     {
-        fprintf(stderr, "stackDupPush: stack overflow\n");
+        fprintf(stderr, "stackDupPush: stack overflow.\n");
         exit(1);
     }
     if (i < 0 || s->top - 1 - i < 0)
     {
-        fprintf(stderr, "stackDupPush: reference to non existent stack element\n");
+        fprintf(stderr, "stackDupPush: reference to non existent stack element %x.\n", i);
         exit(1);
     }
     // top - i - 1 because top points to a free location
@@ -33,12 +33,12 @@ int32_t stackSwap(stack_t *s, int32_t i)
 {
     if (s->top >= STACK_SIZE)
     {
-        fprintf(stderr, "stackDupPush: stack overflow\n");
+        fprintf(stderr, "stackSwap: stack overflow\n");
         exit(1);
     }
     if (i < 0 || s->top - 1 - i < 0)
     {
-        fprintf(stderr, "stackDupPush: reference to non existent stack element\n");
+        fprintf(stderr, "stackSwap: reference to non existent stack element %x.\n", i);
         exit(1);
     }
     // top - i - 1 because top points to a free location
@@ -51,7 +51,7 @@ uintptr_t stackPop(stack_t *s)
 {
     if (s->top == 0)
     {
-        fprintf(stderr, "stackPop: empty stack\n");
+        fprintf(stderr, "stackPop: empty stack.\n");
         exit(1);
     }
     s->top = s->top - 1;
