@@ -17,7 +17,7 @@
 uint8_t byte_program[MAX_PROGRAM];
 
 stack_t STACK_MACHINE;
-garbage_collector GC = {&STACK_MACHINE, NULL, 0, 0, 0, NULL, NULL};
+garbage_collector GC = {&STACK_MACHINE, NULL, 0, 0, NULL, NULL};
 
 int main(int argc, char *argv[])
 {
@@ -322,7 +322,7 @@ L_CONS:
                      */
                     if (!markAndSweep(&GC))
                     {
-                        printf("Memory has been exhausted, trying to allocate more...\n");
+                        printf("Memory has been exhausted.\n");
                         exit(1);
                     }
                 }
