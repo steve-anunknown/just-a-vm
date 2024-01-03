@@ -51,31 +51,28 @@ bool markAndSweep(garbage_collector* gc)
                  * the main loop of the machine.
                  */
                 const uintptr_t temp = roots[count];
-                roots[count]     = ((cons*)temp)->head;
-                roots[count + 1] = (uintptr_t) ((cons*)temp)->tail;
-                count += 2;
+                roots[count++] = ((cons*)temp)->head;
+                roots[count++] = (uintptr_t) ((cons*)temp)->tail;
             }
         }
     }
+    free(roots);
     // sweep: go through the heap (the bitarray actually) and add unmarked
     // elements to the freelist
-    unsigned int index = 0;
     /* 
      * As a sanity check, one can count the marked elements and the reachable,
      * they should be equal.
      */
-    while (index < gc->size)
+    for (unsigned int i = 0; i < gc->size; i += sizeof(cons))
     {
-        if (IsMarked(gc->bitarray, index))
-            Unmark(gc->bitarray, index);
+        if (IsMarked(gc->bitarray, i))
+            Unmark(gc->bitarray, i);
         else
         {
-            cons* temp = (cons*)(gc->bottom + index);
+            cons* temp = (cons*)(gc->bottom + i);
             temp->head = (uintptr_t) gc->freelist;
             gc->freelist = temp;
         }
-        index += sizeof(cons);
     }
-    free(roots);
     return gc->freelist;
 }

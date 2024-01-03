@@ -17,7 +17,7 @@
 uint8_t byte_program[MAX_PROGRAM];
 
 stack_t STACK_MACHINE;
-garbage_collector GC = {&STACK_MACHINE, NULL, 0, 0, 0, NULL, NULL};
+garbage_collector GC = {&STACK_MACHINE, NULL, 0, 0, NULL, NULL};
 
 int main(int argc, char *argv[])
 {
@@ -124,7 +124,7 @@ L_JUMP:
                 goto *(void *)(labels[*pc]);
             case JNZ:
 L_JNZ:
-                arg1 = stackPop(GC.machine);
+                arg1 = STACK_MACHINE.data[--STACK_MACHINE.top];
                 if (arg1 != 0)
                 {
                     arg1 = get2ByteAddress(&pc[1]);
@@ -149,7 +149,7 @@ L_SWAP:
 L_DROP:
                 // pop and ignore
                 pc += SIZEOF_DROP;
-                stackPop(GC.machine);
+                STACK_MACHINE.top--;
                 goto *(void *)(labels[*pc]);
                 /* ==================PUSH OPERATORS===================== */
             case PUSH1:
@@ -180,40 +180,40 @@ L_PUSH4:
             case ADD:
 L_ADD:
                 pc += SIZEOF_ADD;
-                arg2   = stackPop(GC.machine);
-                arg1   = stackPop(GC.machine);
+                arg2   = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1   = STACK_MACHINE.data[--STACK_MACHINE.top];
                 result = (arg1 + arg2) & GC_MASK;
                 stackPush(GC.machine, result);
                 goto *(void *)(labels[*pc]);
             case SUB:
 L_SUB:
                 pc += SIZEOF_SUB;
-                arg2   = stackPop(GC.machine);
-                arg1   = stackPop(GC.machine);
+                arg2   = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1   = STACK_MACHINE.data[--STACK_MACHINE.top];
                 result = (arg1 - arg2) & GC_MASK;
                 stackPush(GC.machine, result);
                 goto *(void *)(labels[*pc]);
             case MUL:
 L_MUL:
                 pc += SIZEOF_MUL;
-                arg2   = stackPop(GC.machine);
-                arg1   = stackPop(GC.machine);
+                arg2   = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1   = STACK_MACHINE.data[--STACK_MACHINE.top];
                 result = (arg1 * arg2) & GC_MASK;
                 stackPush(GC.machine, result);
                 goto *(void *)(labels[*pc]);
             case DIV:
 L_DIV:
                 pc += SIZEOF_DIV;
-                arg2   = stackPop(GC.machine);
-                arg1   = stackPop(GC.machine);
+                arg2   = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1   = STACK_MACHINE.data[--STACK_MACHINE.top];
                 result = (arg1 / arg2) & GC_MASK;
                 stackPush(GC.machine, result); 
                 goto *(void *)(labels[*pc]);
             case MOD:
 L_MOD:
                 pc += SIZEOF_MOD;
-                arg2   = stackPop(GC.machine);
-                arg1   = stackPop(GC.machine);
+                arg2   = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1   = STACK_MACHINE.data[--STACK_MACHINE.top];
                 result = (arg1 % arg2) & GC_MASK;
                 stackPush(GC.machine, result);
                 goto *(void *)(labels[*pc]);
@@ -228,22 +228,22 @@ L_MOD:
             case EQ:
 L_EQ:
                 pc += SIZEOF_EQ;
-                arg2 = stackPop(GC.machine);
-                arg1 = stackPop(GC.machine);
+                arg2 = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1 = STACK_MACHINE.data[--STACK_MACHINE.top];
                 stackPush(GC.machine, (arg1 == arg2));
                 goto *(void *)(labels[*pc]);
             case NE:
 L_NE:
                 pc += SIZEOF_NE;
-                arg2 = stackPop(GC.machine);
-                arg1 = stackPop(GC.machine);
+                arg2 = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1 = STACK_MACHINE.data[--STACK_MACHINE.top];
                 stackPush(GC.machine, (arg1 != arg2));
                 goto *(void *)(labels[*pc]);
             case LT:
 L_LT:
                 pc += SIZEOF_LT;
-                arg2 = stackPop(GC.machine);
-                arg1 = stackPop(GC.machine);
+                arg2 = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1 = STACK_MACHINE.data[--STACK_MACHINE.top];
                 arg2 = arg2 << 1; // discard the 1 gc bit.
                 arg1 = arg1 << 1; // this pads zeros so it's ok.
                 stackPush(GC.machine, ((intptr_t)arg1 < (intptr_t)arg2));
@@ -251,8 +251,8 @@ L_LT:
             case GT:
 L_GT:
                 pc += SIZEOF_GT;
-                arg2 = stackPop(GC.machine);
-                arg1 = stackPop(GC.machine);
+                arg2 = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1 = STACK_MACHINE.data[--STACK_MACHINE.top];
                 arg2 = arg2 << 1; // discard the 1 gc bit.
                 arg1 = arg1 << 1; // this pads zeros so it's ok.
                 stackPush(GC.machine, ((intptr_t)arg1 > (intptr_t)arg2));
@@ -260,8 +260,8 @@ L_GT:
             case LE:
 L_LE:
                 pc += SIZEOF_LE;
-                arg2 = stackPop(GC.machine);
-                arg1 = stackPop(GC.machine);
+                arg2 = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1 = STACK_MACHINE.data[--STACK_MACHINE.top];
                 arg2 = arg2 << 1; // discard the 1 gc bit.
                 arg1 = arg1 << 1; // this pads zeros so it's ok.
                 stackPush(GC.machine, ((intptr_t)arg1 <= (intptr_t)arg2));
@@ -269,8 +269,8 @@ L_LE:
             case GE:
 L_GE:
                 pc += SIZEOF_GE;
-                arg2 = stackPop(GC.machine);
-                arg1 = stackPop(GC.machine);
+                arg2 = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1 = STACK_MACHINE.data[--STACK_MACHINE.top];
                 arg2 = arg2 << 1; // discard the 1 gc bit.
                 arg1 = arg1 << 1; // this pads zeros so it's ok.
                 stackPush(GC.machine, ((intptr_t)arg1 >= (intptr_t)arg2));
@@ -279,21 +279,21 @@ L_GE:
             case NOT:
 L_NOT:
                 pc += SIZEOF_NOT;
-                arg1 = stackPop((GC.machine));
+                arg1 = STACK_MACHINE.data[--STACK_MACHINE.top];
                 stackPush(GC.machine, (arg1 != 0));
                 goto *(void *)(labels[*pc]);
             case AND:
 L_AND:
                 pc += SIZEOF_AND;
-                arg2 = stackPop(GC.machine);
-                arg1 = stackPop(GC.machine);
+                arg2 = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1 = STACK_MACHINE.data[--STACK_MACHINE.top];
                 stackPush(GC.machine, (arg1 != 0 && arg2 != 0));
                 goto *(void *)(labels[*pc]);
             case OR:
 L_OR:
                 pc += SIZEOF_OR;
-                arg2 = stackPop(GC.machine);
-                arg1 = stackPop(GC.machine);
+                arg2 = STACK_MACHINE.data[--STACK_MACHINE.top];
+                arg1 = STACK_MACHINE.data[--STACK_MACHINE.top];
                 stackPush(GC.machine, (arg1 != 0 || arg2 != 0));
                 goto *(void *)(labels[*pc]);
                 /* ==================IO OPERATORS===================== */
@@ -306,7 +306,7 @@ L_INPUT:
             case OUTPUT:
 L_OUTPUT:
                 pc += SIZEOF_OUTPUT;
-                char_output = stackPop(GC.machine);
+                char_output = STACK_MACHINE.data[--STACK_MACHINE.top];
                 putchar(char_output);
                 goto *(void *)(labels[*pc]);
                 /* ======================DYNAMIC MEMORY======================= */
@@ -322,7 +322,7 @@ L_CONS:
                      */
                     if (!markAndSweep(&GC))
                     {
-                        printf("Memory has been exhausted, trying to allocate more...\n");
+                        printf("Memory has been exhausted.\n");
                         exit(1);
                     }
                 }
@@ -333,14 +333,14 @@ L_CONS:
                  * This must NOT be masked. Check the mark and sweep function in
                  * gc.c for more information.
                  */
-                arg2             = stackPop(GC.machine); // tail
+                arg2             = STACK_MACHINE.data[--STACK_MACHINE.top]; // tail
                 poppedCell->tail = (cons*) arg2; 
 
                 /*
                  * This must also NOT be masked, irregardless of what it is, for
                  * the same reason as above.
                  */ 
-                arg1             = stackPop(GC.machine); // head
+                arg1             = STACK_MACHINE.data[--STACK_MACHINE.top]; // head
                 poppedCell->head = arg1;
 
                 stackPush(GC.machine, ((uintptr_t) poppedCell) | MARK_FAKE);
@@ -348,14 +348,14 @@ L_CONS:
             case HD:
 L_HD:
                 pc += SIZEOF_HD;
-                poppedCell = (cons *) (stackPop(GC.machine) & GC_MASK);
+                poppedCell = (cons *) (STACK_MACHINE.data[--STACK_MACHINE.top] & GC_MASK);
 
                 stackPush(GC.machine, poppedCell->head);
                 goto *(void *)(labels[*pc]);
             case TL:
 L_TL:
                 pc += SIZEOF_TL;
-                poppedCell = (cons *) (stackPop(GC.machine) & GC_MASK);
+                poppedCell = (cons *) (STACK_MACHINE.data[--STACK_MACHINE.top] & GC_MASK);
                 stackPush(GC.machine, (uintptr_t) poppedCell->tail);
                 
                 goto *(void *)(labels[*pc]);

@@ -17,7 +17,6 @@ struct garbage_collector
     uint32_t* heap;
     size_t size;
     uintptr_t bottom;
-    uintptr_t next;
     uint32_t *bitarray;
     cons* freelist;
 };

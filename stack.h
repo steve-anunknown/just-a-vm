@@ -35,8 +35,6 @@ int32_t stackPush(stack_t *s, uintptr_t i);
 int32_t stackDupPush(stack_t *s, int32_t i);
 // swap top with the i-th element.
 int32_t stackSwap(stack_t *s, int32_t i);
-// remove the top element and returns it. 
-uintptr_t stackPop(stack_t *s);
 // prints the stack contents for inspection
 void stackPrint(const stack_t *s);
 
