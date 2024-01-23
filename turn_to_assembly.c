@@ -20,6 +20,13 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Error: Could not open file %s\n", argv[1]);
         exit(1);
     }
+
+    long len;
+    fseek(byte_file, 0, SEEK_END);
+    len = ftell(byte_file);
+    rewind(byte_file);
+    //printf("length of file is %ld\n", len);
+
     fread(program, sizeof(uint8_t), MAX_PROGRAM, byte_file);
     fclose(byte_file);
     // create output file
@@ -30,9 +37,10 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+    long counter = 0;
     uint8_t opcode;
     uint8_t* pc = &program[0];
-    while(1)
+    while(counter++ < len)
     {
         opcode = pc[0];
         switch (opcode)
@@ -134,8 +142,7 @@ int main(int argc, char *argv[])
                 pc += SIZEOF_AND;
                 break;
             case OR:
-                fprintf(assembly_file, "OR\n");
-                pc += SIZEOF_OR;
+                fprintf(assembly_file, "OR\n"); pc += SIZEOF_OR;
                 break;
                 /* ======================DYNAMIC MEMORY======================= */
             case CONS:
@@ -157,12 +164,13 @@ int main(int argc, char *argv[])
                 break;
             case HALT:
                 fprintf(assembly_file, "HALT\n");
-                return 0;
+                pc++ ;
                 break;
+            case 0xFF:
+                return 0;
             default:
-                printf("either end of stream or wrong opcode\n");
+                printf("wrong opcode\n");
                 return 0;
-                break;
         }
     }
 }
