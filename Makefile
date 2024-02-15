@@ -2,7 +2,7 @@
 CC = gcc
 
 # Define compile-time flags
-CFLAGS = -Wall -Wmissing-prototypes -Wstrict-prototypes -Werror -Wextra -g -Iinclude
+CFLAGS = -Wall -Wmissing-prototypes -Wstrict-prototypes -Werror -Wextra -g -Iinclude -O3
 
 # Define the name of the executable
 TARGET = vm
